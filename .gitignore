@@ -1,0 +1,10 @@
+# Arduino build files
+*.hex
+*.bin
+*.elf
+build/
+*.log
+
+# Windows thumbnail cache
+Thumbs.db
+ehthumbs.db
