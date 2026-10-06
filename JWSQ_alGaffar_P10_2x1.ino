@@ -114,7 +114,7 @@ typedef struct // loaded to EEPROM
   int8_t IM;  // 1 byte  add 36
   int8_t II;  // 1 byte  add 37
   int8_t CH;  // 1 byte  add 38
-
+  uint8_t IN; // 1 byte  add 39
 } struct_param;
 
 typedef struct {
@@ -128,7 +128,7 @@ struct_param Prm;
 hijir_date nowH;
 
 #define ADDR_MP3_PRM 880
-#define MP3_PARAM_VERSION 101
+#define MP3_PARAM_VERSION 103
 
 typedef struct {
   uint8_t version;        // 1 byte  add 880
@@ -145,6 +145,11 @@ struct_mp3_prm Mp3Prm;
 void dfStop();
 void dfSetVolume(uint8_t vol);
 void dfPlayManual(uint8_t folder, uint8_t track);
+void startBuzzer(uint8_t count);
+void stopBuzzer();
+void serviceBuzzer();
+bool isBuzzerActive();
+void Buzzer(uint8_t state);
 
 // Alamat 1022-1023 bebas (area EMPTY: 880-1023)
 #define ADDR_JUMAT 1022
@@ -179,41 +184,62 @@ uint8_t buzzCount = 0;
 uint32_t buzzLastMs = 0;
 boolean buzzToneActive = false;
 
-void startBuzzer(uint8_t count) {
-  if (Prm.BZ != 1 || count == 0) return;
-  buzzCount = count;
-  buzzToneActive = true;
-  buzzLastMs = millis();
-  tone(BUZZ,5000,500);
-}
-
 void stopBuzzer() {
   buzzCount = 0;
   buzzToneActive = false;
   noTone(BUZZ);
+  digitalWrite(BUZZ, LOW);
+}
+
+void startBuzzer(uint8_t count) {
+  if (Prm.BZ != 1 || count == 0) {
+    stopBuzzer();
+    return;
+  }
+  buzzCount = count;
+  buzzToneActive = true;
+  buzzLastMs = millis();
+  digitalWrite(BUZZ, HIGH);
+  tone(BUZZ, 2500);
 }
 
 void serviceBuzzer() {
-  if (buzzCount == 0) return;
+  if (buzzCount == 0) {
+    if (buzzToneActive) {
+      noTone(BUZZ);
+      digitalWrite(BUZZ, LOW);
+      buzzToneActive = false;
+    }
+    return;
+  }
 
   uint32_t currentMs = millis();
-  if ((uint32_t)(currentMs - buzzLastMs) >= 500UL) {
-    buzzLastMs = currentMs;
-    if (buzzToneActive) {
-      // Sedang berbunyi -> matikan untuk jeda 500ms
+  if (buzzToneActive) {
+    // Sedang berbunyi selama 300ms
+    if ((uint32_t)(currentMs - buzzLastMs) >= 300UL) {
       noTone(BUZZ);
+      digitalWrite(BUZZ, LOW);
       buzzToneActive = false;
-    } else {
-      // Jeda 500ms selesai -> kurangi sisa hitungan bunyi
+      buzzLastMs = currentMs;
       buzzCount--;
-      if (buzzCount > 0) {
+    }
+  } else {
+    // Jeda hening 300ms antar bunyi
+    if ((uint32_t)(currentMs - buzzLastMs) >= 300UL) {
+      if (buzzCount > 0 && Prm.BZ == 1) {
         buzzToneActive = true;
-        if (Prm.BZ == 1) {
-          tone(BUZZ, 5000, 500);
-        }
+        buzzLastMs = currentMs;
+        digitalWrite(BUZZ, HIGH);
+        tone(BUZZ, 2500);
+      } else {
+        buzzCount = 0;
       }
     }
   }
+}
+
+bool isBuzzerActive() {
+  return (buzzCount > 0 || buzzToneActive);
 }
 
 //=======================================
@@ -225,15 +251,17 @@ void setup() { // init comunications
   Wire.begin();
   Serial.begin(9600);
   pinMode(BUZZ, OUTPUT);
+  stopBuzzer();
+  startBuzzer(1);
   delay(2000);
   updateTime();
   GetPrm();
   mp3_init();
 
-  uint8_t lastSel = EEPROM.read(ADDR_RUNSEL);
-  RunSel = (lastSel >= 100 && lastSel <= 104) ? lastSel : 1;
-  if (RunSel >= 100)
-    jumat = (EEPROM.read(ADDR_JUMAT) == 1);
+  RunSel = 1;
+  jumat = false;
+  EEPROM.update(ADDR_RUNSEL, 1);
+  EEPROM.update(ADDR_JUMAT, 0);
 
   Disp_init();
   update_All_data();
@@ -387,21 +415,12 @@ void loop() {
 // DMD3 P10 utility Function================
 // =========================================
 
-// Khusus persisten state kritis (Azan/Iqomah/Blink) untuk hemat umur EEPROM.
 void setRunSel(int val) {
-  if (RunSel == val)
-    return;
   RunSel = val;
-  if (val == 1 || (val >= 100 && val <= 104)) {
-    EEPROM.update(ADDR_RUNSEL, (uint8_t)val);
-  }
 }
 
 void setJumat(bool val) {
-  if (jumat == val)
-    return;
   jumat = val;
-  EEPROM.update(ADDR_JUMAT, val ? 1 : 0);
 }
 
 void Disp_init() {
@@ -415,13 +434,24 @@ void Disp_init() {
   Disp.swapBuffers();
 }
 
-void setBrightness(int bright) { Timer1.pwm(9, bright); }
+void setBrightness(int bright) {
+  if (bright < 15) bright = 15;
+  if (bright > 1023) bright = 1023;
+  Timer1.pwm(9, bright);
+}
 
 void scan() { Disp.refresh(); }
 
 // =========================================
 // Time Calculation Block===================
 // =========================================
+// Sakamoto's algorithm: menghitung hari dari tanggal secara mandiri (0=Minggu, 1=Senin, ..., 6=Sabtu)
+static uint8_t calcDayOfWeek(uint16_t y, uint8_t m, uint8_t d) {
+  static const uint8_t t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+  if (m < 3) y -= 1;
+  return (y + y/4 - y/100 + y/400 + t[m-1] + d) % 7;
+}
+
 void updateTime() {
   const uint32_t currentMs = millis();
   if (rtcTimeValid && (uint32_t)(currentMs - lastRtcReadMs) < 1000UL) {
@@ -431,7 +461,7 @@ void updateTime() {
   now = RTC.now();
   floatnow =
       (float)now.hour() + (float)now.minute() / 60 + (float)now.second() / 3600;
-  daynow = ((now.dayOfTheWeek() + 6) % 7) + 1;
+  daynow = ((calcDayOfWeek(now.year(), now.month(), now.day()) + 6) % 7) + 1;
   lastRtcReadMs = currentMs;
   rtcTimeValid = true;
 }
@@ -459,10 +489,13 @@ void update_All_data() {
       toHijri(now.year(), now.month(), now.day(), date_cor); // load Hijir Date
 
   if (displayReady) {
-    if ((floatnow > 21.0f) or (floatnow < 3.5f)) {
-      setBrightness(4);
+    uint8_t baseBright = (Prm.BL < 20) ? 50 : Prm.BL;
+    if ((floatnow > 21.0f) || (floatnow < 3.5f)) {
+      uint8_t nightBright = baseBright / 3;
+      if (nightBright < 15) nightBright = 15;
+      setBrightness(nightBright);
     } else {
-      setBrightness(Prm.BL);
+      setBrightness(baseBright);
     }
   }
 }

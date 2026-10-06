@@ -7,7 +7,7 @@ void drawAzzan(int DrawAdd)
   if (!dwDo(DrawAdd)) return;
   uint16_t           ct_limit ;
   uint16_t           ad=Prm.AD;
-  uint16_t           jm=12; 
+  uint16_t           jm=Prm.IN; 
   static uint16_t    ct;
   static uint32_t    lsRn;
   static boolean     bzEndDone = false;
@@ -67,6 +67,29 @@ void drawAzzan(int DrawAdd)
   }
 }
 
+static void format2d(char *buf, uint8_t val) {
+  buf[0] = (char)('0' + (val / 10));
+  buf[1] = (char)('0' + (val % 10));
+  buf[2] = '\0';
+}
+
+static void formatTime2(char *buf, uint8_t h, uint8_t m) {
+  buf[0] = (char)('0' + (h / 10));
+  buf[1] = (char)('0' + (h % 10));
+  buf[2] = ':';
+  buf[3] = (char)('0' + (m / 10));
+  buf[4] = (char)('0' + (m % 10));
+  buf[5] = '\0';
+}
+
+static void formatTime3(char *buf, uint8_t h, uint8_t m, uint8_t s) {
+  formatTime2(buf, h, m);
+  buf[5] = ':';
+  buf[6] = (char)('0' + (s / 10));
+  buf[7] = (char)('0' + (s % 10));
+  buf[8] = '\0';
+}
+
 void drawIqomah(int DrawAdd)  
 {
   // check RunSelector
@@ -92,8 +115,8 @@ void drawIqomah(int DrawAdd)
     lsRn = Tmr;
     mnt = (cn_l - ct) / 60;
     scd = (cn_l - ct) % 60;
-    snprintf(BuffM, sizeof(BuffM), "%02d", mnt);
-    snprintf(BuffD, sizeof(BuffD), "%02d", scd);
+    format2d(BuffM, (uint8_t)mnt);
+    format2d(BuffD, (uint8_t)scd);
 
     if (mnt > 0) {
       fType(3);
@@ -131,7 +154,7 @@ void drawIqomah(int DrawAdd)
 
 void drawSholat_S(int sNum, int c)
 {
-  char BuffTime[10];
+  char BuffTime[6];
 
   uint16_t prayerMinute =
       (uint16_t)ceil((sholatT[sNum] * 60.0f) - 0.0001f);
@@ -142,7 +165,7 @@ void drawSholat_S(int sNum, int c)
   uint8_t shour   = prayerMinute / 60U;
   uint8_t sminute = prayerMinute % 60U;
 
-  snprintf(BuffTime, sizeof(BuffTime), "%02u:%02u", shour, sminute);
+  formatTime2(BuffTime, shour, sminute);
 
   fType(0);
   dwCtr(33, 0, sholatN(sNum));
@@ -197,9 +220,9 @@ void Jam(uint16_t y)
   char BuffH[3];
   char BuffM[3];
   char BuffD[3];
-  snprintf(BuffH, sizeof(BuffH), "%02u", now.hour());
-  snprintf(BuffM, sizeof(BuffM), "%02u", now.minute());
-  snprintf(BuffD, sizeof(BuffD), "%02u", now.second());
+  format2d(BuffH, now.hour());
+  format2d(BuffM, now.minute());
+  format2d(BuffD, now.second());
   fType(3);
   Disp.drawText(1, y, BuffH);
   fType(2);
@@ -249,9 +272,8 @@ void anim_SALAM(int DrawAdd)
 
 void drawGreg_TS(uint16_t y)   // Draw Time
 {
-  char  Buff[20];
-  snprintf(Buff, sizeof(Buff), "%02u:%02u:%02u",
-           now.hour(), now.minute(), now.second());
+  char  Buff[9];
+  formatTime3(Buff, now.hour(), now.minute(), now.second());
   fType(2);
   dwCtr(0, y, Buff);
   DoSwap = true;
@@ -372,9 +394,9 @@ void dwCtr(int x, int y, const char* Msg)
 
 void Buzzer(uint8_t state)
 {
- if (state == 1 and Prm.BZ == 1)
+ if (state == 1)
  {
-   tone(BUZZ, 6000, 500); /// 500,400
+   if (!isBuzzerActive()) startBuzzer(1);
  }
  else
  {

@@ -86,9 +86,12 @@ void loadDisplayCache()
 
   readEepromText(40, cachedMasjidName, sizeof(cachedMasjidName));
   readEepromText(80, cachedMasjidAddress, sizeof(cachedMasjidAddress));
-  snprintf(cachedWelcome, sizeof(cachedWelcome),
-           "SELAMAT DATANG DI %s %s %s",
-           masjidType, cachedMasjidName, cachedMasjidAddress);
+  strcpy(cachedWelcome, "SELAMAT DATANG DI ");
+  strcat(cachedWelcome, masjidType);
+  strcat(cachedWelcome, " ");
+  strcat(cachedWelcome, cachedMasjidName);
+  strcat(cachedWelcome, " ");
+  strcat(cachedWelcome, cachedMasjidAddress);
 
   cachedRunningAddress = 0xFFFF;
   cachedRunningText[0] = '\0';
@@ -125,15 +128,24 @@ char * DayName(int number)  // get Day Name from PROGMEM
 
 char * drawDateM()
   {
-      static char  out[14];
+      static char  out[16];
       static char  locBuff[5];
       uint8_t m = now.month();
       if (m < 1 || m > 12) m = 1;
       int locLen = (m - 1) * 4;
       memcpy_P(locBuff, m_month_E + locLen, 4);
       locBuff[4] = '\0';
-      snprintf(out, sizeof(out), "%02u-%s-%u M",
-               now.day(), locBuff, now.year());
+
+      uint8_t d = now.day();
+      out[0] = (char)('0' + (d / 10));
+      out[1] = (char)('0' + (d % 10));
+      out[2] = '-';
+      out[3] = '\0';
+      strcat(out, locBuff);
+      uint8_t len = strlen(out);
+      out[len++] = '-';
+      utoa(now.year(), out + len, 10);
+      strcat(out, " M");
      
       return out;
   }
@@ -141,14 +153,23 @@ char * drawDateM()
 char * drawDateH()
   {
       char  locBuff[11];
-      static char  out[30];
+      static char  out[32];
       uint8_t hm = nowH.hM;
       if (hm < 1 || hm > 12) hm = 1;
       int   locLen = (hm - 1) * 11;
       memcpy_P(locBuff, h_month_E + locLen, 11);
       locBuff[10] = '\0';
-      snprintf(out, sizeof(out), "%02u %s %u H",
-               nowH.hD, locBuff, nowH.hY);
+
+      uint8_t hd = nowH.hD;
+      out[0] = (char)('0' + (hd / 10));
+      out[1] = (char)('0' + (hd % 10));
+      out[2] = ' ';
+      out[3] = '\0';
+      strcat(out, locBuff);
+      uint8_t len = strlen(out);
+      out[len++] = ' ';
+      utoa(nowH.hY, out + len, 10);
+      strcat(out, " H");
      
       return out;
   }

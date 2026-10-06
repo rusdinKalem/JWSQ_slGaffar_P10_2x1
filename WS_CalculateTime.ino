@@ -12,8 +12,8 @@
 void sholatCal()
   {
     float EJD = E_Julian_date(now.year(),now.month(),now.day(),Prm.L_LO);
-    float Decl=Dql(EJD);
-    float EqOfTime=EqT(EJD);
+    float Decl, EqOfTime;
+    SunPosition(EJD, Decl, EqOfTime);
     Pray_Time(Prm.L_TZ, Prm.L_LA, Prm.L_LO,Prm.L_AL,Decl, EqOfTime );
   }
 
@@ -30,39 +30,32 @@ float E_Julian_date(int Year,int Month,int Days,float Longitude) // juliant date
     int A = Year / 100;
     int B = 2 - A + (A / 4);
 
-    float CLong = Longitude/(float)(15 * 24);
-    float JD = floor(365.25 *(float)(Year+ 4716)) 
-              - 2451545 
-              + floor(30.6001 * (float)(Month + 1)) 
+    float CLong = Longitude/(15.0f * 24.0f);
+    float JD = floor(365.25f *(float)(Year+ 4716)) 
+              - 2451545.0f 
+              + floor(30.6001f * (float)(Month + 1)) 
               + (float)Days + (float)B 
-              - 1524.5
+              - 1524.5f
               -CLong;
     return JD; 
   }
 
-//Sun Declination 
-float EqT(const float EJD) 
+//Sun Position: Declination & Equation of Time combined
+void SunPosition(float EJD, float &Decl, float &EqOfTime) 
   {
-    float g = fix_angle(357.529f + 0.98560028f* EJD);
-    float q = fix_angle(280.459f + 0.98564736f* EJD);
-    float L = fix_angle(q + 1.915* sin(d2r(g)) + 0.020* sin(d2r(2*g)));
-    float e = (23.439f - 0.00000036f* EJD);
+    float g = fix_angle(357.529f + 0.98560028f * EJD);
+    float q = fix_angle(280.459f + 0.98564736f * EJD);
+    float L = fix_angle(q + 1.915f * sin(d2r(g)) + 0.020f * sin(d2r(2.0f * g)));
+    float e = (23.439f - 0.00000036f * EJD);
 
-    float RA = r2d(atan2(cos(d2r(e))* sin(d2r(L)), cos(d2r(L))))/ 15;
-    float Eq =(q/15-fix_hour(RA));
-    return Eq;
- //   Ds = r2d(asin(sin(d2r(e))* sin(d2r(L))));  // declination of the Sun
-  }
-  
-float Dql(float EJD) 
-  {
-    float g = fix_angle((357.529f + 0.98560028f* EJD));
-    float q = fix_angle((280.459f + 0.98564736f* EJD));
-    float L = fix_angle((q + 1.915f* sin(d2r(g)) + 0.020f* sin(d2r(2*g))));
-    float e = (23.439f - 0.00000036f* EJD);
+    float sinE = sin(d2r(e));
+    float cosE = cos(d2r(e));
+    float sinL = sin(d2r(L));
+    float cosL = cos(d2r(L));
 
-    float dd = r2d(asin(sin(d2r(e))* sin(d2r(L))));  // declination of the Sun
-    return dd;
+    Decl = r2d(asin(sinE * sinL));
+    float RA = r2d(atan2(cosE * sinL, cosL)) / 15.0f;
+    EqOfTime = (q / 15.0f) - fix_hour(RA);
   }
 
 float HourAngle( float Alfa, float Declination, float Latitude)
@@ -76,47 +69,47 @@ float HourAngle( float Alfa, float Declination, float Latitude)
 void Pray_Time(float TimeZone, float Latitude, float Longitude,float Altitude,float Declination, float EquationOfTime )
   { 
     // Dzuhur
-    float BaseTime = fix_hour((float)12+TimeZone-(Longitude/15)-EquationOfTime);
-    sholatT[4] = BaseTime + (float)(Prm.IH+Prm.IL)/60;
+    float BaseTime = fix_hour(12.0f + TimeZone - (Longitude / 15.0f) - EquationOfTime);
+    sholatT[4] = BaseTime + (float)(Prm.IH + Prm.IL) / 60.0f;
 
     // Ashr
-    float alfa =r2d(-atan(1 / (1+tan(d2r(fabs(Latitude-Declination))))));
-    float HA = HourAngle(alfa,Declination,Latitude);
-    sholatT[5] = BaseTime + HA + (float)(Prm.IH+Prm.IA)/60;
+    float alfa = r2d(-atan(1.0f / (1.0f + tan(d2r(fabs(Latitude - Declination))))));
+    float HA = HourAngle(alfa, Declination, Latitude);
+    sholatT[5] = BaseTime + HA + (float)(Prm.IH + Prm.IA) / 60.0f;
 
     // Maghrib
     alfa = 0.8333f + 0.0347f * sqrt(Altitude > 0.0f ? Altitude : 0.0f);
-    HA = HourAngle(alfa,Declination,Latitude);
-    sholatT[6] = BaseTime + HA + (float)(Prm.IH+Prm.IM)/60;
+    HA = HourAngle(alfa, Declination, Latitude);
+    sholatT[6] = BaseTime + HA + (float)(Prm.IH + Prm.IM) / 60.0f;
 
     // Terbit
     sholatT[2] = BaseTime - HA;
 
     // Isya
-    HA = HourAngle((float)18,Declination,Latitude);
-    sholatT[7] = BaseTime + HA + (float)(Prm.IH+Prm.II)/60;
+    HA = HourAngle(18.0f, Declination, Latitude);
+    sholatT[7] = BaseTime + HA + (float)(Prm.IH + Prm.II) / 60.0f;
 
     // Shubuh
-    HA = HourAngle((float)20,Declination,Latitude);
-    sholatT[1] = BaseTime - HA + (float)(Prm.IH+Prm.IS)/60;
+    HA = HourAngle(20.0f, Declination, Latitude);
+    sholatT[1] = BaseTime - HA + (float)(Prm.IH + Prm.IS) / 60.0f;
     // Imsak
-    sholatT[0] = sholatT[1]-(float)10/60;  
+    sholatT[0] = sholatT[1] - (10.0f / 60.0f);  
     // Dhuha
-    HA = HourAngle((float)-4.5,Declination,Latitude);
+    HA = HourAngle(-4.5f, Declination, Latitude);
     sholatT[3] = BaseTime - HA;
   }
 
 float fix_hour(float a)
   {
-    a = a - (float)24.0 * floor(a / 24.0);
-    a = a < 0.0 ? a + 24.0 : a;
+    a = a - 24.0f * floor(a / 24.0f);
+    a = a < 0.0f ? a + 24.0f : a;
     return a;
   }
 
 float fix_angle(float a)
   {
-    a = a - (float)360.0 * floor(a / 360.0);
-    a = a < 0.0 ? a + 360.0 : a;
+    a = a - 360.0f * floor(a / 360.0f);
+    a = a < 0.0f ? a + 360.0f : a;
     return a;
   }  
 

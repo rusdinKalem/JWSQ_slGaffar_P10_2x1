@@ -159,6 +159,7 @@ boolean getNumericTarget(uint8_t &address, uint8_t &valueType)
   else if (commandCodeIs('I', 'M')) { address = 36; valueType = VALUE_INT8; }
   else if (commandCodeIs('I', 'I')) { address = 37; valueType = VALUE_INT8; }
   else if (commandCodeIs('C', 'H')) { address = 38; valueType = VALUE_INT8; }
+  else if (commandCodeIs('I', 'N')) { address = 39; valueType = VALUE_UINT8;}
   else return false;
   return true;
 }
@@ -228,13 +229,64 @@ static boolean parseSimpleFloat(const char *s, float &result) {
   return true;
 }
 
+static boolean parseSimpleInt(const char *s, long &result) {
+  if (s == NULL || *s == '\0') return false;
+  long sign = 1;
+  if (*s == '-') { sign = -1; s++; }
+  else if (*s == '+') { s++; }
+  if (*s < '0' || *s > '9') return false;
+  long val = 0;
+  while (*s >= '0' && *s <= '9') {
+    val = val * 10 + (*s - '0');
+    s++;
+  }
+  if (*s != '\0') return false;
+  result = sign * val;
+  return true;
+}
+
+static boolean parsePairInt(const char *s, int &f, int &t) {
+  if (s == NULL || *s == '\0') return false;
+  while (*s == ' ') s++;
+  if (*s < '0' || *s > '9') return false;
+  int v1 = 0;
+  while (*s >= '0' && *s <= '9') {
+    v1 = v1 * 10 + (*s - '0');
+    s++;
+  }
+  if (*s != ',' && *s != '-') return false;
+  s++;
+  while (*s == ' ') s++;
+  if (*s < '0' || *s > '9') return false;
+  int v2 = 0;
+  while (*s >= '0' && *s <= '9') {
+    v2 = v2 * 10 + (*s - '0');
+    s++;
+  }
+  while (*s == ' ') s++;
+  if (*s != '\0') return false;
+  f = v1;
+  t = v2;
+  return true;
+}
+
+static int parsePositiveIntPrefix(const char *s) {
+  if (s == NULL) return 0;
+  while (*s == ' ') s++;
+  int val = 0;
+  while (*s >= '0' && *s <= '9') {
+    val = val * 10 + (*s - '0');
+    s++;
+  }
+  return val;
+}
+
 boolean writeNumericCommand()
 {
   uint8_t address;
   uint8_t valueType;
   if (!getNumericTarget(address, valueType)) return false;
 
-  char *endPointer;
   const char *valueText = CH_Prm + 3;
 
   if (valueType == VALUE_FLOAT) {
@@ -245,8 +297,8 @@ boolean writeNumericCommand()
     return true;
   }
 
-  const long parsedValue = strtol(valueText, &endPointer, 10);
-  if (endPointer == valueText || *endPointer != '\0') return false;
+  long parsedValue = 0;
+  if (!parseSimpleInt(valueText, parsedValue)) return false;
 
   if (valueType == VALUE_UINT8) {
     if (!unsignedValueIsValid(parsedValue)) return false;
@@ -319,11 +371,17 @@ boolean writeMp3Command() {
     return true;
   }
 
+  // Reset Default Parameter MP3: NPR
+  if (c1 == 'P' && c2 == 'R') {
+    set_default_mp3_prm();
+    loadMp3Prm();
+    return true;
+  }
+
   // 2. Play Manual Folder & Track: NPF<folder>,<track> (Contoh: NPF1,2 atau NPF2,1)
   if (c1 == 'P' && c2 == 'F') {
     int f = 0, t = 0;
-    if (sscanf(CH_Prm + 3, "%d,%d", &f, &t) == 2 ||
-        sscanf(CH_Prm + 3, "%d-%d", &f, &t) == 2) {
+    if (parsePairInt(CH_Prm + 3, f, t)) {
       if (f >= 1 && f <= 99 && t >= 1 && t <= 255) {
         dfPlayManual((uint8_t)f, (uint8_t)t);
         return true;
@@ -332,21 +390,20 @@ boolean writeMp3Command() {
     return false;
   }
 
-  char *endPointer;
   const char *valText = CH_Prm + 3;
-  const long val = strtol(valText, &endPointer, 10);
-  if (endPointer == valText || *endPointer != '\0') return false;
+  long val = 0;
+  if (!parseSimpleInt(valText, val)) return false;
 
   // 3. Play Manual Tartil: NPT<track> atau NPP<track> (Folder 01)
   if (c1 == 'P' && (c2 == 'T' || c2 == 'P')) {
-    if (val < 1 || val > 99) return false;
+    if (val < 1 || val > 255) return false;
     dfPlayManual(1, (uint8_t)val);
     return true;
   }
 
   // 4. Play Manual Tarhim: NPH<track> (Folder 02)
   if (c1 == 'P' && c2 == 'H') {
-    if (val < 1 || val > 99) return false;
+    if (val < 1 || val > 255) return false;
     dfPlayManual(2, (uint8_t)val);
     return true;
   }
@@ -390,7 +447,7 @@ boolean writeMp3Command() {
 
   // Track Tartil: NF1 s.d. NF8 (1-99)
   if (c1 == 'F') {
-    if (val < 1 || val > 99) return false;
+    if (val < 1 || val > 255) return false;
     Mp3Prm.tartilTrack[slot] = (uint8_t)val;
     saveMp3Prm();
     return true;
@@ -398,7 +455,7 @@ boolean writeMp3Command() {
 
   // Track Tarhim: NH1 s.d. NH8 (1-99)
   if (c1 == 'H') {
-    if (val < 1 || val > 99) return false;
+    if (val < 1 || val > 255) return false;
     Mp3Prm.tarhimTrack[slot] = (uint8_t)val;
     saveMp3Prm();
     return true;
@@ -414,10 +471,17 @@ boolean writeDirectPlayCommand() {
     return true;
   }
 
+  // Reset Default Parameter MP3: PR
+  if (CH_Prm[1] == 'R') {
+    set_default_mp3_prm();
+    loadMp3Prm();
+    return true;
+  }
+
   // 2. Play Tartil: PT<track> (Folder 01)
   if (CH_Prm[1] == 'T') {
-    int t = atoi(CH_Prm + 2);
-    if (t >= 1 && t <= 99) {
+    int t = parsePositiveIntPrefix(CH_Prm + 2);
+    if (t >= 1 && t <= 255) {
       dfPlayManual(1, (uint8_t)t);
       return true;
     }
@@ -425,8 +489,8 @@ boolean writeDirectPlayCommand() {
 
   // 3. Play Tarhim: PH<track> (Folder 02)
   if (CH_Prm[1] == 'H') {
-    int t = atoi(CH_Prm + 2);
-    if (t >= 1 && t <= 99) {
+    int t = parsePositiveIntPrefix(CH_Prm + 2);
+    if (t >= 1 && t <= 255) {
       dfPlayManual(2, (uint8_t)t);
       return true;
     }
@@ -435,7 +499,7 @@ boolean writeDirectPlayCommand() {
   // 4. Play Custom: PF<folder>,<track> atau P<folder>,<track>
   int f = 0, t = 0;
   const char *sub = (CH_Prm[1] == 'F') ? (CH_Prm + 2) : (CH_Prm + 1);
-  if (sscanf(sub, "%d,%d", &f, &t) == 2 || sscanf(sub, "%d-%d", &f, &t) == 2) {
+  if (parsePairInt(sub, f, t)) {
     if (f >= 1 && f <= 99 && t >= 1 && t <= 255) {
       dfPlayManual((uint8_t)f, (uint8_t)t);
       return true;
@@ -444,8 +508,8 @@ boolean writeDirectPlayCommand() {
 
   // 5. Play Track Folder 01: P<track> (Contoh: P1, P2, P6)
   if (CH_Prm[1] >= '1' && CH_Prm[1] <= '9') {
-    int trk = atoi(CH_Prm + 1);
-    if (trk >= 1 && trk <= 99) {
+    int trk = parsePositiveIntPrefix(CH_Prm + 1);
+    if (trk >= 1 && trk <= 255) {
       dfPlayManual(1, (uint8_t)trk);
       return true;
     }
@@ -468,7 +532,7 @@ void LoadPrm()
 
   if (updated) {
     GetPrm();
-    if (Prm.BZ == 1) tone(BUZZ, 2000, 300);
+    if (Prm.BZ == 1) startBuzzer(1);
   }
 }
 
@@ -510,7 +574,7 @@ void set_default_prm() {
 
   Prm = (struct_param){PARAM_VERSION, -4.054413, 121.598583, 67.7, 8,
                        1, 50, 40, 2, 5, 10, 30, 15, 10, 10, 5, 10,
-                       1, 1, 1, 1, 0, 0, 0, 0, 0, 0};
+                       1, 1, 1, 1, 0, 0, 0, 0, 0, 0,12};
   EEPROM.put(0, Prm);
   strcpy_P(buf, D_MASJID); EEPROM.put(40, buf);
   strcpy_P(buf, D_ALAMAT); EEPROM.put(80, buf);
