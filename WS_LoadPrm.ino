@@ -131,7 +131,7 @@ boolean getTextTarget(uint16_t &address, uint8_t &maxCharacters)
   return true;
 }
 
-boolean getNumericTarget(uint8_t &address, uint8_t &valueType)
+boolean getNumericTarget(uint16_t &address, uint8_t &valueType)
 {
   if (commandCodeIs('L', 'A')) { address = 1;  valueType = VALUE_FLOAT; }
   else if (commandCodeIs('L', 'O')) { address = 5;  valueType = VALUE_FLOAT; }
@@ -160,6 +160,9 @@ boolean getNumericTarget(uint8_t &address, uint8_t &valueType)
   else if (commandCodeIs('I', 'I')) { address = 37; valueType = VALUE_INT8; }
   else if (commandCodeIs('C', 'H')) { address = 38; valueType = VALUE_INT8; }
   else if (commandCodeIs('I', 'N')) { address = 39; valueType = VALUE_UINT8;}
+  else if (commandCodeIs('H', 'S')) { address = 920; valueType = VALUE_UINT8; }
+  else if (commandCodeIs('H', 'M')) { address = 921; valueType = VALUE_UINT8; }
+  else if (commandCodeIs('H', 'H')) { address = 922; valueType = VALUE_UINT8; }
   else return false;
   return true;
 }
@@ -172,6 +175,18 @@ void writeEepromText(uint16_t address, uint8_t maxCharacters, const char *text)
     index++;
   }
   EEPROM.update(address + index, '\0');
+}
+
+void writeEepromText_P(uint16_t address, uint8_t maxCharacters, PGM_P progmemText) {
+  uint8_t i = 0;
+  for (; i < maxCharacters; i++) {
+    char c = pgm_read_byte(progmemText + i);
+    EEPROM.update(address + i, c);
+    if (c == '\0') break;
+  }
+  if (i >= maxCharacters) {
+    EEPROM.update(address + maxCharacters, '\0');
+  }
 }
 
 boolean writeTextCommand()
@@ -201,6 +216,7 @@ boolean unsignedValueIsValid(long value)
       commandCodeIs('S', 'T') || commandCodeIs('S', 'U')) {
     return value <= 1;
   }
+  if (commandCodeIs('H', 'S')) return value >= 1 && value <= 3;
   return true;
 }
 
@@ -283,7 +299,7 @@ static int parsePositiveIntPrefix(const char *s) {
 
 boolean writeNumericCommand()
 {
-  uint8_t address;
+  uint16_t address;
   uint8_t valueType;
   if (!getNumericTarget(address, valueType)) return false;
 
@@ -557,32 +573,33 @@ void GetPrm() {
   Iqomah[7] = Prm.I7;
 
   loadDisplayCache();
-  if (displayReady) setBrightness((int)Prm.BL);
   update_All_data();
 }
 
 void set_default_prm() {
-  // Default strings disimpan di PROGMEM (hemat SRAM)
-        static const char D_MASJID[] PROGMEM = "AL-MUHAJIRIN";
-        static const char D_ALAMAT[] PROGMEM = "SULAWESI TENGGARA";
-        static const char D_INFO1[]  PROGMEM = "Info 1";
-        static const char D_INFO2[]  PROGMEM = "Info 2";
-        static const char D_INFO3[]  PROGMEM = "Info 3";
-        static const char D_SHOLAT[] PROGMEM = "SAATNYA SHALAT BERJAMAAH, RAPAT DAN LURUSKAN SHAF AGAR SHOLAT KITA SEMPURNA";
-        static const char D_JUMAT[]  PROGMEM = "SAATNYA RANGKAIAN IBADAH JUM'AT, HARAP TENANG DAN KHIDMAT";
-        char buf[50] = {0};
+  // Default strings disimpan di PROGMEM (hemat SRAM & bebas stack buffer overflow)
+  static const char D_MASJID[] PROGMEM = "AL-MUHAJIRIN";
+  static const char D_ALAMAT[] PROGMEM = "SULAWESI TENGGARA";
+  static const char D_INFO1[]  PROGMEM = "Info 1";
+  static const char D_INFO2[]  PROGMEM = "Info 2";
+  static const char D_INFO3[]  PROGMEM = "Info 3";
+  static const char D_SHOLAT[] PROGMEM = "SAATNYA SHALAT BERJAMAAH, RAPAT DAN LURUSKAN SHAF AGAR SHOLAT KITA SEMPURNA";
+  static const char D_JUMAT[]  PROGMEM = "SAATNYA RANGKAIAN IBADAH JUM'AT, HARAP TENANG DAN KHIDMAT";
 
   Prm = (struct_param){PARAM_VERSION, -4.054413, 121.598583, 67.7, 8,
                        1, 50, 40, 2, 5, 10, 30, 15, 10, 10, 5, 10,
-                       1, 1, 1, 1, 0, 0, 0, 0, 0, 0,12};
+                       1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 12};
   EEPROM.put(0, Prm);
-  strcpy_P(buf, D_MASJID); EEPROM.put(40, buf);
-  strcpy_P(buf, D_ALAMAT); EEPROM.put(80, buf);
-  strcpy_P(buf, D_INFO1);  EEPROM.put(130, buf);
-  strcpy_P(buf, D_INFO2);  EEPROM.put(280, buf);
-  strcpy_P(buf, D_INFO3);  EEPROM.put(430, buf);
-  strcpy_P(buf, D_SHOLAT); EEPROM.put(580, buf);
-  strcpy_P(buf, D_JUMAT);  EEPROM.put(730, buf);
+  writeEepromText_P(40, 39, D_MASJID);
+  writeEepromText_P(80, 49, D_ALAMAT);
+  writeEepromText_P(130, 149, D_INFO1);
+  writeEepromText_P(280, 149, D_INFO2);
+  writeEepromText_P(430, 149, D_INFO3);
+  writeEepromText_P(580, 149, D_SHOLAT);
+  writeEepromText_P(730, 149, D_JUMAT);
+  EEPROM.update(920, 1);  // Mode Malam Default: 1 (Normal)
+  EEPROM.update(921, 21); // Start Malam: Jam 21
+  EEPROM.update(922, 4);  // Finish Pagi: Jam 4 subuh
 }
 
 void set_default_time() {

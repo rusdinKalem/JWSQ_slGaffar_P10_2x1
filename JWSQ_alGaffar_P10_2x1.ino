@@ -142,6 +142,10 @@ typedef struct {
 
 struct_mp3_prm Mp3Prm;
 
+bool isRelayOn();
+void dfMuteForPrayer();
+void dfStopPrayerRelay();
+void dfOnAzzan();
 void dfStop();
 void dfSetVolume(uint8_t vol);
 void dfPlayManual(uint8_t folder, uint8_t track);
@@ -167,6 +171,7 @@ boolean azzan = false;
 uint8_t reset_x = 0;
 boolean rtcTimeValid = false;
 boolean displayReady = false;
+uint8_t activeNightMode = 0;
 uint32_t lastRtcReadMs = 0;
 
 // Other Variable
@@ -279,8 +284,8 @@ void loop() {
 
   // Reset & Init Display State
   updateTime();  // maksimal satu pembacaan RTC per detik
-  check_mp3();   // monitoring Tartil & Tarhim
   check_azzan(); // check Sholah Time for Azzan
+  check_mp3();   // monitoring Tartil & Tarhim
   DoSwap = false;
   fType(1);
   Disp.clear();
@@ -289,9 +294,26 @@ void loop() {
   // Up All function with Timer in this fuction
   Timer_Minute(1);
 
-  // =========================================
-  // List of Display Component Block =========
-  // =========================================
+  // Mode Malam Khusus (PADAM / JAM BESAR)
+  static boolean wasPadam = false;
+  if (!azzan && RunSel < 100) {
+    if (activeNightMode == 3) {
+      if (!wasPadam) {
+        Disp.clear();
+        Disp.swapBuffers();
+        setBrightness(0);
+        wasPadam = true;
+      }
+      return;
+    }
+    if (activeNightMode == 2) {
+      wasPadam = false;
+      Jam(0);
+      if (DoSwap) Disp.swapBuffers();
+      return;
+    }
+  }
+  wasPadam = false;
 
   static boolean firstBoot = true;
   if (firstBoot) {
@@ -435,7 +457,12 @@ void Disp_init() {
 }
 
 void setBrightness(int bright) {
-  if (bright < 15) bright = 15;
+  if (bright <= 0) {
+    Timer1.disablePwm(9);
+    pinMode(9, OUTPUT);
+    digitalWrite(9, LOW);
+    return;
+  }
   if (bright > 1023) bright = 1023;
   Timer1.pwm(9, bright);
 }
@@ -490,9 +517,34 @@ void update_All_data() {
 
   if (displayReady) {
     uint8_t baseBright = (Prm.BL < 20) ? 50 : Prm.BL;
-    if ((floatnow > 21.0f) || (floatnow < 3.5f)) {
-      uint8_t nightBright = baseBright / 3;
-      if (nightBright < 15) nightBright = 15;
+    uint8_t nMode = EEPROM.read(920);
+    uint8_t nStart = EEPROM.read(921);
+    uint8_t nEnd = EEPROM.read(922);
+    if (nMode == 0 || nMode > 3) nMode = 1;
+    if (nStart > 24) nStart = 21;
+    if (nStart >= 24 || nStart == 12) nStart = 0;
+    else if (nStart <= 11 && nStart >= 8) nStart += 12;
+    if (nEnd > 24) nEnd = 4;
+
+    bool isNight = false;
+    if (nStart > nEnd) {
+      isNight = (now.hour() >= nStart || now.hour() < nEnd);
+    } else {
+      isNight = (now.hour() >= nStart && now.hour() < nEnd);
+    }
+
+    if (isNight && nMode > 1) {
+      activeNightMode = nMode;
+    } else {
+      activeNightMode = 0;
+    }
+
+    if (activeNightMode == 3) {
+      setBrightness(0);
+    } else if (activeNightMode == 2) {
+      uint8_t nightBright = baseBright / 25;
+      if (nightBright < 2) nightBright = 2;
+      if (nightBright > 6) nightBright = 6;
       setBrightness(nightBright);
     } else {
       setBrightness(baseBright);
@@ -529,7 +581,7 @@ void check_azzan() {
       setJumat(daynow == 5 && i == 4 && Prm.MT == 1);
       SholatNow = i;
       azzan = true;
-      dfStop();
+      dfOnAzzan();
       startBuzzer(5);
 
       // drawAzzan terdaftar menggunakan nomor 100

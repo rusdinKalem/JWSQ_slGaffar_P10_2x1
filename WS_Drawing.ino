@@ -1,4 +1,28 @@
 // =========================================
+// PROGMEM String Pool (label statis display)
+// =========================================
+static const char P_ACARA[]    PROGMEM = "ACARA";
+static const char P_ADZAN[]    PROGMEM = "ADZAN";
+static const char P_JUMATAN[]  PROGMEM = "JUMATAN";
+static const char P_TUNGGU[]   PROGMEM = "TUNGGU";
+static const char P_IQOMAH[]   PROGMEM = "IQOMAH";
+static const char P_ASSALAMU[] PROGMEM = "ASSALAMU";
+static const char P_ALAIKUM[]  PROGMEM = "ALAIKUM";
+
+// Helper: salin PROGMEM -> buffer RAM lalu gambar (DMD membaca dari RAM)
+void dwText_P(int x, int y, PGM_P p) {
+  static char buf[12];
+  strcpy_P(buf, p);
+  Disp.drawText(x, y, buf);
+}
+
+void dwCtr_P(int x, int y, PGM_P p) {
+  static char buf[12];
+  strcpy_P(buf, p);
+  dwCtr(x, y, buf);
+}
+
+// =========================================
 // Drawing Content Block====================
 // =========================================
 void drawAzzan(int DrawAdd)
@@ -30,18 +54,18 @@ void drawAzzan(int DrawAdd)
       Disp.drawFilledRect(15, 10, 16, 12);
       if (jumat) {
         fType(0);
-        dwCtr(32, 0, "ACARA");
+        dwCtr_P(32, 0, P_ACARA);
       }
       else      {
         fType(0);
-        dwCtr(32, 0, "ADZAN");
+        dwCtr_P(32, 0, P_ADZAN);
       }
     }else {
 
     }
 
     if (jumat) {
-        fType(0); dwCtr(32, 8, "JUMATAN");
+        fType(0); dwCtr_P(32, 8, P_JUMATAN);
       }
       else      {
         fType(0); dwCtr(32, 8, sholatN(SholatNow));
@@ -131,8 +155,8 @@ void drawIqomah(int DrawAdd)
     }
     
     fType(0);
-    dwCtr(32, 0, "TUNGGU");
-    dwCtr(32, 8, "IQOMAH");
+    dwCtr_P(32, 0, P_TUNGGU);
+    dwCtr_P(32, 8, P_IQOMAH);
 
     // Waktu iqomah akan berakhir (5 detik tersisa): bunyikan 5 kali bip dengan jeda 500ms
     if (cn_l >= 5 && ct == (cn_l - 5) && !bzEndDone) {
@@ -240,8 +264,8 @@ void Jam(uint16_t y)
 void drawSalam(uint16_t y)   //Draw Date
 { 
   fType(2); 
-  dwCtr(0, y+1, "ASSALAMU");
-  dwCtr(0, y+9, "ALAIKUM"); 
+  dwCtr_P(0, y+1, P_ASSALAMU);
+  dwCtr_P(0, y+9, P_ALAIKUM); 
   DoSwap = true;
 }
 
@@ -366,6 +390,7 @@ if (ct > ct_l)
     azzan = false;
     setJumat(false);
     ct = 0;
+    dfStopPrayerRelay();
   }
 }
 
